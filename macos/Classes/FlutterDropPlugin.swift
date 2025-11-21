@@ -27,11 +27,11 @@ public class FlutterDropPlugin: NSObject, FlutterPlugin, NSDraggingSource {
                let x = args["x"] as? Double,
                let y = args["y"] as? Double,
                let width = args["width"] as? Double,
-               let height = args["height"] as? Double
+               let height = args["height"] as? Double,
+               let uri = args["uri"] as? String
             {
                 startDrag(
-                    at: NSPoint(x: x, y: y), size: NSSize(width: width, height: height),
-                    identifier: "lala.txt")
+                    at: NSPoint(x: x, y: y), size: NSSize(width: width, height: height), fileUri: uri)
                 result("drag started")
             } else {
                 result(FlutterError(code: "INVALID_ARGS", message: "Missing x/y", details: nil))
@@ -42,37 +42,73 @@ public class FlutterDropPlugin: NSObject, FlutterPlugin, NSDraggingSource {
     }
     
     // MARK: - Start native drag for a single widget
-    func startDrag(at point: NSPoint, size: NSSize, identifier: String) {
+    func startDrag(at point: NSPoint, size: NSSize, fileUri: String?) {
         guard let window = NSApp.mainWindow else {
             print("No main window found")
             return
         }
         
-        // Find the FlutterView instance in the window
+        // Find the FlutterView
         guard let flutterView = findFlutterView(in: window.contentView) else {
             print("FlutterView not found")
             return
         }
         
-        // Create a simple placeholder image for drag
-        let dragImage = NSImage(size: size)
-        dragImage.lockFocus()
-        NSColor.systemBlue.setFill()
-        NSBezierPath(rect: NSRect(origin: .zero, size: size)).fill()
-        dragImage.unlockFocus()
+        let dragImage: NSImage
+        if let uri = fileUri {
+            let url = URL(fileURLWithPath: uri) // not optional
+            if let image = NSImage(contentsOf: url) {
+                // Clip the image to rounded corners
+                dragImage = NSImage(size: size)
+                dragImage.lockFocus()
+                
+                let path = NSBezierPath(roundedRect: NSRect(origin: .zero, size: size), xRadius: 8, yRadius: 8)
+                path.addClip()
+                
+                image.draw(in: NSRect(origin: .zero, size: size),
+                           from: NSRect(origin: .zero, size: image.size),
+                           operation: .sourceOver,
+                           fraction: 1.0)
+                
+                dragImage.unlockFocus()
+            } else {
+                // fallback placeholder
+                dragImage = NSImage(size: size)
+                dragImage.lockFocus()
+                let path = NSBezierPath(roundedRect: NSRect(origin: .zero, size: size), xRadius: 8, yRadius: 8)
+                NSColor.systemBlue.setFill()
+                path.fill()
+                dragImage.unlockFocus()
+            }
+        } else {
+            // fallback placeholder
+            dragImage = NSImage(size: size)
+            dragImage.lockFocus()
+            let path = NSBezierPath(roundedRect: NSRect(origin: .zero, size: size), xRadius: 8, yRadius: 8)
+            NSColor.systemBlue.setFill()
+            path.fill()
+            dragImage.unlockFocus()
+        }
         
-        // Create a pasteboard item
+        // Create pasteboard item
         let pasteboardItem = NSPasteboardItem()
-        pasteboardItem.setString(identifier, forType: .string)
+        
+        if let uri = fileUri {
+            let fileURL = URL(fileURLWithPath: uri)
+            pasteboardItem.setData(fileURL.dataRepresentation, forType: .fileURL)
+            pasteboardItem.setString(fileURL.lastPathComponent, forType: .string)
+        } else {
+            pasteboardItem.setString("placeholder", forType: .string)
+        }
         
         // Create NSDraggingItem
         let draggingItem = NSDraggingItem(pasteboardWriter: pasteboardItem)
-        draggingItem.setDraggingFrame(NSRect(origin: point, size: size), contents: dragImage)
+        draggingItem.setDraggingFrame(NSRect(origin: point, size: dragImage.size), contents: dragImage)
         
         // Begin drag session
         let draggingSession = flutterView.beginDraggingSession(
             with: [draggingItem], event: NSEvent(), source: self)
-        draggingSession.animatesToStartingPositionsOnCancelOrFail = false  // disables weird top-to-drag animation
+        draggingSession.animatesToStartingPositionsOnCancelOrFail = false
     }
     
     public func draggingSession(

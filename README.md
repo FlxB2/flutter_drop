@@ -1,12 +1,6 @@
-A flutter macOS plugin which allows dragging files outside your app
+Flutter plugin which allows dragging files outside your app.
 
-roughly based on:
-- https://github.com/skalio/native-drag-and-drop
-- https://github.com/superlistapp/super_native_extensions
-
-But kept simple (regarding super_native_extensions) and with better drop support (regarding native-drag-and-drop)
-
-Heavily WIP
+Only basic support for images and macOS right now. 
 
 # Setup
 Add the depedency to your `pubspec.yaml`
@@ -18,12 +12,16 @@ dependencies:
 
 ```dart
  DropWidget(
-  name: "heya",
-  child: TextButton(
-    onPressed: () {
-      print("Button 1");
-    },
-    child: Text("Button 1"),
-  ),
-),
+  getUri: _getDragFile,
+  child: Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Image.asset('assets/flutter.png', width: 80, height: 80),
+      const SizedBox(height: 8),
+      const Text('Drag Me!'),
+    ],
+  )
+ )
 ```
+
+where `_getDragFile` returns `Future<Uri?>` to your file.

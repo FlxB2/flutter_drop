@@ -1,11 +1,16 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 class DropWidget extends StatefulWidget {
-  final String name;
   final Widget child;
+  final Future<Uri?> Function() getUri; // parent provides the Future<Uri>
 
-  const DropWidget({super.key, required this.name, required this.child});
+  const DropWidget({
+    super.key,
+    required this.child,
+    required this.getUri,
+  });
 
   @override
   DropWidgetState createState() => DropWidgetState();
@@ -17,8 +22,16 @@ class DropWidgetState extends State<DropWidget> {
 
   Offset? _pointerDownPosition;
   final double _dragThreshold = 5.0; // pixels
+  Uri? _dragUri;
+
+  // Exposed function to trigger fetching the URI
+  Future<Uri> prepareDrag() async {
+    _dragUri = await widget.getUri();
+    return _dragUri!;
+  }
 
   void _onPointerDown(PointerDownEvent event) {
+    prepareDrag();
     _pointerDownPosition = event.position;
   }
 
@@ -27,22 +40,22 @@ class DropWidgetState extends State<DropWidget> {
 
     final distance = (event.position - _pointerDownPosition!).distance;
     if (distance >= _dragThreshold) {
-      try {
-        final box = key.currentContext?.findRenderObject() as RenderBox?;
-        final size = box?.size ?? Size.zero;
+      final box = key.currentContext?.findRenderObject() as RenderBox?;
+      final size = box?.size ?? Size.zero;
 
-        print("Starting native drag");
+      try {
         await platform.invokeMethod('startNativeDrag', {
           'x': _pointerDownPosition!.dx,
           'y': _pointerDownPosition!.dy,
           'width': size.width,
           'height': size.height,
-          //'fileName': widget.fileName,
+          'uri': _dragUri?.toFilePath(),
         });
       } on PlatformException catch (e) {
-        print("Error starting native drag: $e");
+        if (kDebugMode) print("Error starting native drag: $e");
       }
-      _pointerDownPosition = null; // prevent retriggering
+
+      _pointerDownPosition = null;
     }
   }
 
