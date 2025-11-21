@@ -42,47 +42,37 @@ public class FlutterDropPlugin: NSObject, FlutterPlugin {
             return
         }
         
-        let mouseDownSelector = #selector(NSView.mouseDown(with:))
-        if let originalMethod = class_getInstanceMethod(flutterViewClass, mouseDownSelector) {
-            let originalIMP = method_getImplementation(originalMethod)
-            let swizzledBlock: @convention(block) (AnyObject, NSEvent) -> Void = { view, event in
-                print("mouseDown intercepted")
-                
-                if let nsview = view as? NSView {
-                    let localPoint = nsview.convert(event.locationInWindow, from: nil)
-                    self.hitTest(clickX: localPoint.x, clickY: localPoint.y)
-                }
-                
-                // Call original
-                let imp = unsafeBitCast(originalIMP, to: MouseDownIMP.self)
-                imp(view, mouseDownSelector, event)
+        swizzleMethod(flutterViewClass, selector: #selector(NSView.mouseDown(with:))) { view, event in
+            // This gets called from FlutterViewWrapper and from FlutterView
+            // the coordinates differ slightly, the latter seems to be more accurate
+            // offset is approx 83.0 -> maybe statusbar on top of the view is inclueded
+            // in FlutterView but not in FlutterViewWrapper, not sure
+            // TODO: check this later, FlutterView gives accurate results
+            guard NSStringFromClass(type(of: view)) == "FlutterView" else { return }
+                            
+            if let nsview = view as? NSView {
+                let localPoint = nsview.convert(event.locationInWindow, from: nil)
+                self.hitTest(clickX: localPoint.x, clickY: localPoint.y)
             }
-            let imp = imp_implementationWithBlock(swizzledBlock as Any)
-            method_setImplementation(originalMethod, imp)
-        }
-        
-        // Swizzle mouseUp
-        let mouseUpSelector = #selector(NSView.mouseUp(with:))
-        if let originalMethod = class_getInstanceMethod(flutterViewClass, mouseUpSelector) {
-            let originalIMP = method_getImplementation(originalMethod)
-            let swizzledBlock: @convention(block) (AnyObject, NSEvent) -> Void = { view, event in
-                // Custom logic
-                print("mouseUp intercepted")
-                
-                // Call original
-                let imp = unsafeBitCast(originalIMP, to: MouseUpIMP.self)
-                imp(view, mouseUpSelector, event)
-            }
-            let imp = imp_implementationWithBlock(swizzledBlock as Any)
-            method_setImplementation(originalMethod, imp)
         }
     }
     
-    private func swizzleMethod(_ cls: AnyClass, original: Selector, swizzled: Selector) {
-        guard let originalMethod = class_getInstanceMethod(cls, original),
-              let swizzledMethod = class_getInstanceMethod(FlutterDropPlugin.self, swizzled) else {
-            return
+    // Generic monkey patching / swizzle helper
+    private func swizzleMethod(_ cls: AnyClass, selector: Selector, handler: @escaping (AnyObject, NSEvent) -> Void) {
+        guard let originalMethod = class_getInstanceMethod(cls, selector) else { return }
+        let originalIMP = method_getImplementation(originalMethod)
+        
+        let swizzledBlock: @convention(block) (AnyObject, NSEvent) -> Void = { view, event in
+            // Call original implementation
+            typealias MethodIMP = @convention(c) (AnyObject, Selector, NSEvent) -> Void
+            let imp = unsafeBitCast(originalIMP, to: MethodIMP.self)
+            imp(view, selector, event)
+            
+            // Call custom handler
+            handler(view, event)
         }
-        method_exchangeImplementations(originalMethod, swizzledMethod)
+        
+        let imp = imp_implementationWithBlock(swizzledBlock as Any)
+        method_setImplementation(originalMethod, imp)
     }
 }
