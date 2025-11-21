@@ -3,9 +3,14 @@ import FlutterMacOS
 import ObjectiveC.runtime
 
 typealias MouseDownIMP = @convention(c) (AnyObject, Selector, NSEvent) -> Void
-typealias MouseUpIMP   = @convention(c) (AnyObject, Selector, NSEvent) -> Void
+typealias MouseUpIMP = @convention(c) (AnyObject, Selector, NSEvent) -> Void
+typealias DragMaskIMP =
+@convention(c) (AnyObject, Selector, NSDraggingSession, NSDraggingContext) -> NSDragOperation
+typealias DragEndedIMP =
+@convention(c) (AnyObject, Selector, NSDraggingSession, NSPoint, NSDragOperation) -> Void
+typealias DragMovedIMP = @convention(c) (AnyObject, Selector, NSDraggingSession, NSPoint) -> Void
 
-public class FlutterDropPlugin: NSObject, FlutterPlugin {
+public class FlutterDropPlugin: NSObject, FlutterPlugin, NSDraggingSource {
     private var channel: FlutterMethodChannel!
     
     public static func register(with registrar: FlutterPluginRegistrar) {
@@ -13,66 +18,95 @@ public class FlutterDropPlugin: NSObject, FlutterPlugin {
         let instance = FlutterDropPlugin()
         instance.channel = channel
         registrar.addMethodCallDelegate(instance, channel: channel)
-        
-        instance.patchFlutterView()
     }
     
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
+        case "startNativeDrag":
+            if let args = call.arguments as? [String: Any],
+               let x = args["x"] as? Double,
+               let y = args["y"] as? Double,
+               let width = args["width"] as? Double,
+               let height = args["height"] as? Double
+            {
+                startDrag(
+                    at: NSPoint(x: x, y: y), size: NSSize(width: width, height: height),
+                    identifier: "lala.txt")
+                result("drag started")
+            } else {
+                result(FlutterError(code: "INVALID_ARGS", message: "Missing x/y", details: nil))
+            }
         default:
             result(FlutterMethodNotImplemented)
         }
     }
     
-    private func hitTest(clickX: Double, clickY: Double) {
-        channel.invokeMethod("hitTestAt", arguments: ["x": clickX, "y": clickY]) { response in
-            if let widgetName = response as? String {
-                print("Clicked on widget: \(widgetName)")
-            } else {
-                print("No widget at this position")
-            }
-        }
-    }
-    
-    
-    // Monkey patch flutter view to receive mouseDown / Up for drag / drop
-    private func patchFlutterView() {
-        guard let flutterViewClass: AnyClass = NSClassFromString("FlutterView") else {
-            print("FlutterView class not found!")
+    // MARK: - Start native drag for a single widget
+    func startDrag(at point: NSPoint, size: NSSize, identifier: String) {
+        guard let window = NSApp.mainWindow else {
+            print("No main window found")
             return
         }
         
-        swizzleMethod(flutterViewClass, selector: #selector(NSView.mouseDown(with:))) { view, event in
-            // This gets called from FlutterViewWrapper and from FlutterView
-            // the coordinates differ slightly, the latter seems to be more accurate
-            // offset is approx 83.0 -> maybe statusbar on top of the view is inclueded
-            // in FlutterView but not in FlutterViewWrapper, not sure
-            // TODO: check this later, FlutterView gives accurate results
-            guard NSStringFromClass(type(of: view)) == "FlutterView" else { return }
-                            
-            if let nsview = view as? NSView {
-                let localPoint = nsview.convert(event.locationInWindow, from: nil)
-                self.hitTest(clickX: localPoint.x, clickY: localPoint.y)
-            }
+        // Find the FlutterView instance in the window
+        guard let flutterView = findFlutterView(in: window.contentView) else {
+            print("FlutterView not found")
+            return
         }
+        
+        // Create a simple placeholder image for drag
+        let dragImage = NSImage(size: size)
+        dragImage.lockFocus()
+        NSColor.systemBlue.setFill()
+        NSBezierPath(rect: NSRect(origin: .zero, size: size)).fill()
+        dragImage.unlockFocus()
+        
+        // Create a pasteboard item
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(identifier, forType: .string)
+        
+        // Create NSDraggingItem
+        let draggingItem = NSDraggingItem(pasteboardWriter: pasteboardItem)
+        draggingItem.setDraggingFrame(NSRect(origin: point, size: size), contents: dragImage)
+        
+        // Begin drag session
+        let draggingSession = flutterView.beginDraggingSession(
+            with: [draggingItem], event: NSEvent(), source: self)
+        draggingSession.animatesToStartingPositionsOnCancelOrFail = false  // disables weird top-to-drag animation
     }
     
-    // Generic monkey patching / swizzle helper
-    private func swizzleMethod(_ cls: AnyClass, selector: Selector, handler: @escaping (AnyObject, NSEvent) -> Void) {
-        guard let originalMethod = class_getInstanceMethod(cls, selector) else { return }
-        let originalIMP = method_getImplementation(originalMethod)
-        
-        let swizzledBlock: @convention(block) (AnyObject, NSEvent) -> Void = { view, event in
-            // Call original implementation
-            typealias MethodIMP = @convention(c) (AnyObject, Selector, NSEvent) -> Void
-            let imp = unsafeBitCast(originalIMP, to: MethodIMP.self)
-            imp(view, selector, event)
-            
-            // Call custom handler
-            handler(view, event)
+    public func draggingSession(
+        _ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation
+    ) {
+        print("Drag ended at \(screenPoint) with operation \(operation.rawValue)")
+    }
+    
+    private func findFlutterView(in view: NSView?) -> NSView? {
+        guard let view = view else { return nil }
+        if NSStringFromClass(type(of: view)) == "FlutterView" {
+            return view
         }
-        
-        let imp = imp_implementationWithBlock(swizzledBlock as Any)
-        method_setImplementation(originalMethod, imp)
+        for subview in view.subviews {
+            if let found = findFlutterView(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+    
+    public func draggingSession(
+        _ session: NSDraggingSession,
+        sourceOperationMaskFor context: NSDraggingContext
+    ) -> NSDragOperation {
+        switch context {
+        case .outsideApplication:
+            // allow drag to other apps
+            return .copy
+        case .withinApplication:
+            // allow drag inside the same app
+            return .copy
+        @unknown default:
+            return .copy
+        }
     }
 }

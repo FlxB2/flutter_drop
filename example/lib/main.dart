@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_drop/flutter_drop.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  FlutterDrop.initialize();
   runApp(const MyApp());
 }
 
