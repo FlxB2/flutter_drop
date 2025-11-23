@@ -20,10 +20,10 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin
 
 SPEC CHECKSUMS:
-  flutter_drop: 1ab5abec5cf6d5223c76dd4327fe4c62470cbaa4
+  flutter_drop: 90efe377f599aa5b2ed96eddefe1fcec17aaa1ee
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   path_provider_foundation: 2a68637f8a62df7f6e790a428d1bdf72cb4e2d59
 
-PODFILE CHECKSUM: 346bfb2deb41d4a6ebd6f6799f92188bde2d246f
+PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
 
 COCOAPODS: 1.16.2
