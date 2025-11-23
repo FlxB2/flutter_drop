@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -11,8 +12,7 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This is the function we pass to DropWidget
-  Future<Uri?> _getDragFile() async {
+  Future<DropFileInfo?> _getInfo() async {
     try {
       final assetPath = 'assets/flutter.png';
       final data = await rootBundle.load(assetPath);
@@ -21,9 +21,11 @@ class MyApp extends StatelessWidget {
       final file = File('${tempDir.path}/${assetPath.split('/').last}');
       await file.writeAsBytes(data.buffer.asUint8List());
 
-      return file.uri;
+      return DropFileInfo(uri: file.uri.toFilePath());
     } catch (e) {
-      print("Error preparing drag file: $e");
+      if (kDebugMode) {
+        print("Error preparing drag file: $e");
+      }
       return null;
     }
   }
@@ -38,7 +40,7 @@ class MyApp extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               DropWidget(
-                getUri: _getDragFile,
+                getInfo: _getInfo,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
