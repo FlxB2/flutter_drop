@@ -12,19 +12,3 @@ Add the depedency to your `pubspec.yaml`
 dependencies:
   flutter_drop: 0.0.1
 ```
-
-```dart
-  DropWidget(
-    getInfo: _getInfo,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Image.asset('assets/flutter.png', width: 80, height: 80),
-        const SizedBox(height: 8),
-        const Text('Drag Me!'),
-      ],
-    ),
-  )
-```
-
-where `_getInfo` returns `Future<Uri?>` to your file.

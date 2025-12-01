@@ -55,9 +55,28 @@ public class FlutterDropPlugin: NSObject, FlutterPlugin, NSDraggingSource {
         guard let window = NSApp.mainWindow else { return }
         guard let flutterView = findFlutterView(in: window.contentView) else { return }
 
+        var fileURL: URL?
+        let isTempFile = false
+
+        if let uri = fileInfo?.uri {
+            fileURL = URL(fileURLWithPath: uri)
+        } else if let bytes = fileInfo?.bytes, let filename = fileInfo?.filename {
+            let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("flutter_drop")
+            do {
+                try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true, attributes: nil)
+                let tempURL = tempDir.appendingPathComponent(filename)
+                try bytes.write(to: tempURL)
+                fileURL = tempURL
+            } catch {
+                print("FlutterDrop: Error writing temporary file: \(error)")
+                return
+            }
+        }
+        
         let dragImage: NSImage
-        if let uri = fileInfo?.uri,
-           let image = NSImage(contentsOf: URL(fileURLWithPath: uri)) {
+        if let bytes = fileInfo?.bytes, let image = NSImage(data: bytes) {
+            dragImage = roundedImage(from: image, size: size)
+        } else if let url = fileURL, let image = NSImage(contentsOf: url) {
             dragImage = roundedImage(from: image, size: size)
         } else {
             dragImage = roundedPlaceholder(size: size)
@@ -65,10 +84,10 @@ public class FlutterDropPlugin: NSObject, FlutterPlugin, NSDraggingSource {
 
         let pasteboardItem = NSPasteboardItem()
         
-        if let uri = fileInfo?.uri {
-            let fileURL = URL(fileURLWithPath: uri)
-            pasteboardItem.setData(fileURL.dataRepresentation, forType: .fileURL)
+        if let url = fileURL {
+            pasteboardItem.setData(url.dataRepresentation, forType: .fileURL)
         } else {
+            // This case should ideally not be reached if DropFileInfo init is correct.
             pasteboardItem.setString("placeholder", forType: .string)
         }
         
@@ -132,12 +151,21 @@ public class FlutterDropPlugin: NSObject, FlutterPlugin, NSDraggingSource {
 }
 
 struct DropFileInfo {
-    let uri: String
+    let uri: String?
+    let bytes: Data?
+    let filename: String?
 
     init?(dict: [String: Any]) {
-        guard let uri = dict["uri"] as? String else {
+        self.uri = dict["uri"] as? String
+        if let typedData = dict["bytes"] as? FlutterStandardTypedData {
+            self.bytes = typedData.data
+        } else {
+            self.bytes = nil
+        }
+        self.filename = dict["filename"] as? String
+
+        if self.uri == nil && (self.bytes == nil || self.filename == nil) {
             return nil
         }
-        self.uri = uri
     }
 }

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_drop/drag_file_info.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_drop/flutter_drop.dart';
 
@@ -9,10 +10,23 @@ void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
-  Future<DropFileInfo?> _getInfo() async {
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  DropFileInfo? _fileInfo;
+
+  @override
+  void initState() {
+    super.initState();
+    _prepareDragFile();
+  }
+
+  Future<void> _prepareDragFile() async {
     try {
       final assetPath = 'assets/flutter.png';
       final data = await rootBundle.load(assetPath);
@@ -21,12 +35,13 @@ class MyApp extends StatelessWidget {
       final file = File('${tempDir.path}/${assetPath.split('/').last}');
       await file.writeAsBytes(data.buffer.asUint8List());
 
-      return DropFileInfo(uri: file.uri.toFilePath());
+      setState(() {
+        _fileInfo = DropFileInfo(uri: null, bytes: data.buffer.asUint8List(), filename: 'flutter.png');
+      });
     } catch (e) {
       if (kDebugMode) {
         print("Error preparing drag file: $e");
       }
-      return null;
     }
   }
 
@@ -40,7 +55,7 @@ class MyApp extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               DropWidget(
-                getInfo: _getInfo,
+                fileInfo: _fileInfo,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [

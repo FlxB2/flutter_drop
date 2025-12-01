@@ -5,12 +5,12 @@ import 'package:flutter_drop/drag_file_info.dart';
 
 class DropWidget extends StatefulWidget {
   final Widget child;
-  final Future<DropFileInfo?> Function() getInfo;
+  final DropFileInfo? fileInfo;
 
   const DropWidget({
     super.key,
     required this.child,
-    required this.getInfo,
+    this.fileInfo,
   });
 
   @override
@@ -23,19 +23,13 @@ class DropWidgetState extends State<DropWidget> {
 
   Offset? _pointerDownPosition;
   final double _dragThreshold = 5.0; // pixels
-  DropFileInfo? _dropFileInfo;
-
-  Future<DropFileInfo> prepareDrag() async {
-    _dropFileInfo = await widget.getInfo();
-    return _dropFileInfo!;
-  }
 
   void _onPointerDown(PointerDownEvent event) {
-    prepareDrag();
     _pointerDownPosition = event.position;
   }
 
-  void _onPointerMove(PointerMoveEvent event) async {
+  void _onPointerMove(PointerMoveEvent event) {
+    if (widget.fileInfo == null) return;
     if (_pointerDownPosition == null) return;
 
     final distance = (event.position - _pointerDownPosition!).distance;
@@ -44,12 +38,12 @@ class DropWidgetState extends State<DropWidget> {
       final size = box?.size ?? Size.zero;
 
       try {
-        await platform.invokeMethod('startNativeDrag', {
+        platform.invokeMethod('startNativeDrag', {
           'x': _pointerDownPosition!.dx,
           'y': _pointerDownPosition!.dy,
           'width': size.width,
           'height': size.height,
-          'fileInfo': _dropFileInfo?.toMap(),
+          'fileInfo': widget.fileInfo?.toMap(),
         });
       } on PlatformException catch (e) {
         if (kDebugMode) print("Error starting native drag: $e");
